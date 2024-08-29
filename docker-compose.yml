@@ -1,0 +1,47 @@
+services:
+  proxy:
+    image: ghcr.io/mutinywallet/ln-websocket-proxy:latest
+    container_name: "proxy"
+    restart: unless-stopped
+
+  postgres:
+    image: postgres:15@sha256:546445ad21cb5893c0997080b831ee45945e798c4359270e16413c8bd93575db
+    container_name: "postgres"
+    restart: unless-stopped
+    volumes:
+      - ./volumes/postgres:/var/lib/postgresql/data
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: docker
+      POSTGRES_DB: vss
+
+  vss:
+    image: ghcr.io/mutinywallet/vss-rs:latest
+    container_name: "vss"
+    restart: unless-stopped
+    environment:
+      DATABASE_URL: postgres://postgres:docker@postgres/vss
+      SELF_HOST: "true"
+      RUST_LOG: "info"
+    links:
+      - postgres
+    depends_on:
+      - postgres
+
+  web:
+    container_name: "mutiny-web"
+    image: benthecarman/mutiny-wasm-testnet4:latest
+    restart: unless-stopped
+
+  nginx:
+    image: nginx:1.21-alpine@sha256:686aac2769fd6e7bab67663fd38750c135b72d993d0bb0a942ab02ef647fc9c3
+    init: true
+    restart: unless-stopped
+    ports:
+      - "14499:80"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+    depends_on:
+      - web
+      - proxy
+      - vss
