@@ -9,11 +9,11 @@ services:
     container_name: "postgres"
     restart: unless-stopped
     volumes:
+      - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
       - ./volumes/postgres:/var/lib/postgresql/data
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: docker
-      POSTGRES_DB: vss
 
   vss:
     image: ghcr.io/mutinywallet/vss-rs:latest
@@ -34,6 +34,7 @@ services:
     restart: unless-stopped
 
   nginx:
+    container_name: "nginx"
     image: nginx:1.21-alpine@sha256:686aac2769fd6e7bab67663fd38750c135b72d993d0bb0a942ab02ef647fc9c3
     init: true
     restart: unless-stopped
@@ -41,7 +42,92 @@ services:
       - "14499:80"
     volumes:
       - ./nginx.conf:/etc/nginx/nginx.conf
+      - ~/volumes/rgs:/var/www/rgs:ro
     depends_on:
       - web
       - proxy
       - vss
+
+  bitcoind:
+    container_name: "bitcoind"
+    build: ./bitcoind
+    environment:
+      RPCPASSWORD: $RPCPASSWORD
+    command: [ "-testnet4", "-zmqpubrawblock=tcp://0.0.0.0:28332", "-zmqpubrawtx=tcp://0.0.0.0:28333", "-rpcallowip=0.0.0.0/0", "-rpcbind=0.0.0.0", "-rpcpassword=$RPCPASSWORD", "-rpcuser=bitcoin" ]
+    restart: always
+    stop_grace_period: 1m
+    volumes:
+      - ./volumes/bitcoin:/root/.bitcoin
+    ports:
+      - "28332:28332"
+      - "28333:28333"
+      - "18332:18332"
+      - "18333:18333"
+
+  # docker build of testnet4 fork: https://github.com/Impa10r/lnd
+  lnd:
+    container_name: "lnd"
+    image: benthecarman/lnd:testnet4@sha256:9f3308423212a8688a2fdfc8f83ee92f3570c4c24615b5c650dda0a7eb9f3a48
+    restart: always
+    stop_grace_period: 10m
+    environment:
+      RPCPASSWORD: $RPCPASSWORD
+    command: [
+      "--bitcoin.active",
+      "--bitcoin.node=bitcoind",
+      "--maxpendingchannels=10",
+      "--rpclisten=0.0.0.0:10009",
+      "--restlisten=0.0.0.0:8080",
+      "--bitcoind.rpchost=bitcoind:48332",
+      "--bitcoind.rpcuser=bitcoin",
+      "--bitcoind.rpcpass=$RPCPASSWORD",
+      "--bitcoind.zmqpubrawblock=tcp://bitcoind:28332",
+      "--bitcoind.zmqpubrawtx=tcp://bitcoind:28333",
+      "--db.bolt.auto-compact",
+      "--db.prune-revocation",
+      "--tlsextradomain=lnd",
+      "--protocol.option-scid-alias",
+      "--protocol.wumbo-channels",
+      "--accept-keysend",
+      "--minchansize=25000",
+      "--noseedbackup",
+      "--gc-canceled-invoices-on-startup",
+      "--coin-selection-strategy=random",
+    ]
+    volumes:
+      - ./lnd.conf:/root/.lnd/lnd.conf
+      - ./volumes/lnd:/root/.lnd
+    ports:
+      - "9735:9735"
+      - "10009:10009"
+      - "8080:8080"
+    depends_on:
+      - bitcoind
+
+  rgs_server:
+    container_name: "rgs-server"
+    restart: always
+    stop_grace_period: 10m
+    build:
+      context: ./rapid-gossip-sync-server
+      dockerfile: ./docker/Dockerfile.rgs
+    entrypoint: [ "rapid-gossip-sync-server" ]
+    volumes:
+      - './volumes/rgs_server:/usr/src/app:cached'
+    links:
+      - postgres
+      - bitcoind
+    depends_on:
+      - postgres
+      - bitcoind
+      - lnd
+    environment:
+      - RAPID_GOSSIP_SYNC_SERVER_DB_HOST=postgres
+      - RAPID_GOSSIP_SYNC_SERVER_DB_USER=postgres
+      - RAPID_GOSSIP_SYNC_SERVER_DB_PASSWORD=docker
+      - RAPID_GOSSIP_SYNC_SERVER_DB_NAME=ln_graph_sync
+      - RAPID_GOSSIP_SYNC_SERVER_NETWORK=testnet4
+      - BITCOIN_REST_DOMAIN=bitcoind
+      - BITCOIN_REST_PORT=48332
+      - BITCOIN_REST_PATH=/rest/
+      - LN_PEERS=033c840a8be47ae5d7384be37a35535b916f4e14c9b0efad1f65db6ec474427a1f@lnd:9735 # lnd's node id, YOU NEED TO CHANGE THIS TO YOUR NODE ID
