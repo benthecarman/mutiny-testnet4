@@ -1,9 +1,4 @@
 services:
-  proxy:
-    image: ghcr.io/mutinywallet/ln-websocket-proxy:latest
-    container_name: "proxy"
-    restart: unless-stopped
-
   postgres:
     image: postgres:15@sha256:546445ad21cb5893c0997080b831ee45945e798c4359270e16413c8bd93575db
     container_name: "postgres"
@@ -45,12 +40,10 @@ services:
       - ~/volumes/rgs:/var/www/rgs:ro
     depends_on:
       - web
-      - proxy
       - vss
 
   bitcoind:
-    container_name: "bitcoind"
-    build: ./bitcoind
+    image: benthecarman/bitcoind:28.0rc1
     environment:
       RPCPASSWORD: $RPCPASSWORD
     command: [ "-testnet4", "-zmqpubrawblock=tcp://0.0.0.0:28332", "-zmqpubrawtx=tcp://0.0.0.0:28333", "-rpcallowip=0.0.0.0/0", "-rpcbind=0.0.0.0", "-rpcpassword=$RPCPASSWORD", "-rpcuser=bitcoin" ]
