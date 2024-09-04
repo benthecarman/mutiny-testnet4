@@ -1,7 +1,15 @@
+x-logging:
+  &default-logging
+  driver: "json-file"
+  options:
+    max-size: "50m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgres:15@sha256:546445ad21cb5893c0997080b831ee45945e798c4359270e16413c8bd93575db
     container_name: "postgres"
+    logging: *default-logging
     restart: unless-stopped
     volumes:
       - ./init-db.sh:/docker-entrypoint-initdb.d/init-db.sh
@@ -14,6 +22,7 @@ services:
     image: ghcr.io/mutinywallet/vss-rs:latest
     container_name: "vss"
     restart: unless-stopped
+    logging: *default-logging
     environment:
       DATABASE_URL: postgres://postgres:docker@postgres/vss
       SELF_HOST: "true"
@@ -27,10 +36,12 @@ services:
     container_name: "mutiny-web"
     image: benthecarman/mutiny-wasm-testnet4:latest
     restart: unless-stopped
+    logging: *default-logging
 
   nginx:
     container_name: "nginx"
     image: nginx:1.21-alpine@sha256:686aac2769fd6e7bab67663fd38750c135b72d993d0bb0a942ab02ef647fc9c3
+    logging: *default-logging
     init: true
     restart: unless-stopped
     ports:
@@ -44,6 +55,7 @@ services:
 
   bitcoind:
     image: benthecarman/bitcoind:28.0rc1
+    logging: *default-logging
     environment:
       RPCPASSWORD: $RPCPASSWORD
     command: [ "-testnet4", "-zmqpubrawblock=tcp://0.0.0.0:28332", "-zmqpubrawtx=tcp://0.0.0.0:28333", "-rpcallowip=0.0.0.0/0", "-rpcbind=0.0.0.0", "-rpcpassword=$RPCPASSWORD", "-rpcuser=bitcoin" ]
@@ -61,6 +73,7 @@ services:
   lnd:
     container_name: "lnd"
     image: benthecarman/lnd:testnet4@sha256:9f3308423212a8688a2fdfc8f83ee92f3570c4c24615b5c650dda0a7eb9f3a48
+    logging: *default-logging
     restart: always
     stop_grace_period: 10m
     environment:
@@ -100,7 +113,8 @@ services:
   rgs_server:
     container_name: "rgs-server"
     restart: always
-    stop_grace_period: 10m
+    logging: *default-logging
+    stop_grace_period: 1m
     build:
       context: ./rapid-gossip-sync-server
       dockerfile: ./docker/Dockerfile.rgs

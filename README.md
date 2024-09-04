@@ -49,7 +49,7 @@ You can create some aliases to make it easier to interact with bitcoind and lnd:
 
 ```bash
 alias lncli="docker exec -it lnd /bin/lncli -n testnet"
-alias bitcoin-cli="docker exec -it bitcoind /usr/local/bin/bitcoin-cli -n testnet4"
+alias bitcoin-cli="docker exec -it bitcoind /usr/local/bin/bitcoin-cli -testnet4"
 ```
 
 ## Updating
